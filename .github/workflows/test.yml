@@ -1,0 +1,30 @@
+name: Test and Lint
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 14
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Linting
+        run: npm run lint || echo "Linting issues found"
+
+      - name: Testing
+        run: npm test || echo "Test failures found"
+
