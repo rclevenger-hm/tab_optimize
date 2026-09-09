@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tab Optimize Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="eyebrow">TAB OPTIMIZE</div>
+      <h1>Settings</h1>
+      <p>Choose when background tabs may be suspended. Chrome automatically wakes a discarded tab when you return to it.</p>
+    </header>
+
+    <form id="settingsForm" class="card">
+      <label class="toggle-row">
+        <span><strong>Automatic optimization</strong><small>Check for idle background tabs every minute.</small></span>
+        <input id="enabled" type="checkbox">
+      </label>
+
+      <div class="field">
+        <label for="inactivityMinutes"><strong>Idle time before suspension</strong></label>
+        <div class="number-field"><input id="inactivityMinutes" type="number" min="5" max="1440" step="5" required><span>minutes</span></div>
+        <small>Minimum 5 minutes. Manual optimization ignores this timer.</small>
+      </div>
+
+      <label class="toggle-row">
+        <span><strong>Protect pinned tabs</strong><small>Never automatically or manually suspend pinned tabs.</small></span>
+        <input id="protectPinned" type="checkbox">
+      </label>
+
+      <label class="toggle-row">
+        <span><strong>Protect tabs playing audio</strong><small>Keep audible tabs awake.</small></span>
+        <input id="protectAudible" type="checkbox">
+      </label>
+
+      <div class="field">
+        <label for="excludedDomains"><strong>Never suspend these sites</strong></label>
+        <textarea id="excludedDomains" rows="7" placeholder="mail.google.com&#10;example.com"></textarea>
+        <small>One domain per line. A domain also protects its subdomains.</small>
+      </div>
+
+      <div class="actions">
+        <button class="primary" type="submit">Save settings</button>
+        <button id="resetButton" class="secondary" type="button">Reset defaults</button>
+        <span id="saveStatus" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+
+    <section class="note">
+      <h2>What Tab Optimize does not do</h2>
+      <p>It does not read page content, send browsing data anywhere, or claim a fake per-tab memory number. It uses Chrome's native tab discard feature and stores only settings, tab activity timestamps, and suspension counters locally.</p>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

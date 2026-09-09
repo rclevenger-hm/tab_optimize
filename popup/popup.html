@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tab Optimize</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="header">
+      <div>
+        <div class="eyebrow">TAB OPTIMIZE</div>
+        <h1>Less tab pressure.<br>Same workspace.</h1>
+      </div>
+      <span id="autoStatus" class="status-pill">Loading</span>
+    </header>
+
+    <section class="metrics" aria-label="Tab status">
+      <div class="metric"><strong id="totalTabs">—</strong><span>Open</span></div>
+      <div class="metric"><strong id="sleepingTabs">—</strong><span>Sleeping</span></div>
+      <div class="metric"><strong id="protectedTabs">—</strong><span>Protected</span></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-copy">
+        <h2>Optimize now</h2>
+        <p>Suspend eligible background tabs immediately. Active, pinned, audible, and excluded tabs stay untouched.</p>
+      </div>
+      <button id="optimizeButton" class="primary-button" type="button">Suspend background tabs</button>
+      <button id="wakeButton" class="secondary-button" type="button" disabled>Wake last batch</button>
+      <p id="resultMessage" class="result" role="status" aria-live="polite"></p>
+    </section>
+
+    <footer>
+      <div class="footer-stat">
+        <span>Lifetime suspensions</span>
+        <strong id="totalSuspensions">—</strong>
+      </div>
+      <div class="footer-stat">
+        <span>Last optimization</span>
+        <strong id="lastRun">—</strong>
+      </div>
+      <button id="settingsButton" class="text-button" type="button">Settings</button>
+    </footer>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
