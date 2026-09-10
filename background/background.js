@@ -206,7 +206,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
 });
 
 chrome.runtime.onStartup.addListener(async () => {
-  await initializeActivity(true);
+  await initializeActivity(false);
   await ensureAlarm();
   await updateBadge();
 });
