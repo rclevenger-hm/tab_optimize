@@ -50,6 +50,13 @@ function clearAlarm(name) {
   return new Promise((resolve) => chrome.alarms.clear(name, resolve));
 }
 
+function runSafely(label, operation) {
+  Promise.resolve(operation).catch((error) => {
+    const message = error?.message || String(error);
+    console.warn(`Tab Optimize ${label} failed: ${message}`);
+  });
+}
+
 async function getSettings() {
   const stored = await storageGet('sync', [SETTINGS_KEY]);
   return normalizeSettings(stored[SETTINGS_KEY] || DEFAULT_SETTINGS);
@@ -212,34 +219,36 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) optimizeTabs({ force: false });
+  if (alarm.name === ALARM_NAME) runSafely('scheduled scan', optimizeTabs({ force: false }));
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
-  markTabActive(tabId);
-  updateBadge();
+  runSafely('activity update', markTabActive(tabId));
+  runSafely('badge update', updateBadge());
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
-  markTabActive(tab.id);
+  runSafely('new-tab activity update', markTabActive(tab.id));
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  removeTabState(tabId);
-  updateBadge();
+  runSafely('tab removal state update', removeTabState(tabId));
+  runSafely('badge update', updateBadge());
 });
 
-chrome.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
-  await removeTabState(removedTabId);
-  await markTabActive(addedTabId);
+chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
+  runSafely('tab replacement state update', (async () => {
+    await removeTabState(removedTabId);
+    await markTabActive(addedTabId);
+  })());
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab.active || changeInfo.status === 'complete') {
-    markTabActive(tabId);
+    runSafely('updated-tab activity update', markTabActive(tabId));
   }
   if (Object.prototype.hasOwnProperty.call(changeInfo, 'discarded')) {
-    updateBadge();
+    runSafely('badge update', updateBadge());
   }
 });
 
@@ -270,5 +279,5 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   return true;
 });
 
-ensureAlarm();
-updateBadge();
+runSafely('alarm initialization', ensureAlarm());
+runSafely('badge initialization', updateBadge());
