@@ -51,7 +51,7 @@ function clearAlarm(name) {
 }
 
 function runSafely(label, operation) {
-  Promise.resolve(operation).catch((error) => {
+  return Promise.resolve(operation).catch((error) => {
     const message = error?.message || String(error);
     console.warn(`Tab Optimize ${label} failed: ${message}`);
   });
@@ -199,7 +199,7 @@ async function getStatus() {
 }
 
 chrome.runtime.onInstalled.addListener(({ reason }) => {
-  runSafely('install initialization', (async () => {
+  return runSafely('install initialization', (async () => {
     const existing = await storageGet('sync', [SETTINGS_KEY]);
     if (!existing[SETTINGS_KEY]) {
       await storageSet('sync', { [SETTINGS_KEY]: DEFAULT_SETTINGS });
@@ -215,7 +215,7 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  runSafely('startup initialization', (async () => {
+  return runSafely('startup initialization', (async () => {
     await initializeActivity(false);
     await ensureAlarm();
     await updateBadge();
