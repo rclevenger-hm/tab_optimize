@@ -198,24 +198,28 @@ async function getStatus() {
   };
 }
 
-chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  const existing = await storageGet('sync', [SETTINGS_KEY]);
-  if (!existing[SETTINGS_KEY]) {
-    await storageSet('sync', { [SETTINGS_KEY]: DEFAULT_SETTINGS });
-  }
-  await initializeActivity(true);
-  await ensureAlarm();
-  await updateBadge();
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  runSafely('install initialization', (async () => {
+    const existing = await storageGet('sync', [SETTINGS_KEY]);
+    if (!existing[SETTINGS_KEY]) {
+      await storageSet('sync', { [SETTINGS_KEY]: DEFAULT_SETTINGS });
+    }
+    await initializeActivity(true);
+    await ensureAlarm();
+    await updateBadge();
 
-  if (reason === 'install') {
-    chrome.runtime.openOptionsPage();
-  }
+    if (reason === 'install') {
+      chrome.runtime.openOptionsPage();
+    }
+  })());
 });
 
-chrome.runtime.onStartup.addListener(async () => {
-  await initializeActivity(false);
-  await ensureAlarm();
-  await updateBadge();
+chrome.runtime.onStartup.addListener(() => {
+  runSafely('startup initialization', (async () => {
+    await initializeActivity(false);
+    await ensureAlarm();
+    await updateBadge();
+  })());
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
