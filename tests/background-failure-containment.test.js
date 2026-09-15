@@ -7,7 +7,7 @@ function eventSlot() {
   return slot;
 }
 
-test('fire-and-forget tab events contain storage failures', async () => {
+test('fire-and-forget background events contain storage failures', async () => {
   const startup = eventSlot();
   const installed = eventSlot();
   const message = eventSlot();
@@ -65,17 +65,29 @@ test('fire-and-forget tab events contain storage failures', async () => {
   try {
     await import(`../background/background.js?failure-test=${Date.now()}`);
     assert.equal(typeof activated.listener, 'function');
+    assert.equal(typeof startup.listener, 'function');
+    assert.equal(typeof installed.listener, 'function');
 
     chrome.storage.local.get = () => {
       throw new Error('storage unavailable');
     };
 
     assert.doesNotThrow(() => activated.listener({ tabId: 42 }));
+    assert.doesNotThrow(() => startup.listener());
+    assert.doesNotThrow(() => installed.listener({ reason: 'update' }));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     assert.ok(
       warnings.some((line) => line.includes('Tab Optimize activity update failed: storage unavailable')),
-      'background failure should be reduced to a bounded warning',
+      'tab activity failure should be reduced to a bounded warning',
+    );
+    assert.ok(
+      warnings.some((line) => line.includes('Tab Optimize startup initialization failed: storage unavailable')),
+      'startup initialization failure should be reduced to a bounded warning',
+    );
+    assert.ok(
+      warnings.some((line) => line.includes('Tab Optimize install initialization failed: storage unavailable')),
+      'install/update initialization failure should be reduced to a bounded warning',
     );
   } finally {
     console.warn = originalWarn;
