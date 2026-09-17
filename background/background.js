@@ -11,11 +11,27 @@ const SETTINGS_KEY = 'settings';
 const STATE_KEY = 'state';
 
 function storageGet(area, keys) {
-  return new Promise((resolve) => chrome.storage[area].get(keys, resolve));
+  return new Promise((resolve, reject) => {
+    chrome.storage[area].get(keys, (value) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(value);
+    });
+  });
 }
 
 function storageSet(area, value) {
-  return new Promise((resolve) => chrome.storage[area].set(value, resolve));
+  return new Promise((resolve, reject) => {
+    chrome.storage[area].set(value, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 function queryTabs(query = {}) {
