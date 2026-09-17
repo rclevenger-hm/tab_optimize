@@ -89,6 +89,21 @@ test('fire-and-forget background events contain storage failures', async () => {
       warnings.some((line) => line.includes('Tab Optimize install initialization failed: storage unavailable')),
       'install/update initialization failure should be reduced to a bounded warning',
     );
+
+    warnings.length = 0;
+    chrome.storage.local.get = (_keys, callback) => {
+      chrome.runtime.lastError = { message: 'storage quota unavailable' };
+      callback({});
+      chrome.runtime.lastError = null;
+    };
+
+    assert.doesNotThrow(() => activated.listener({ tabId: 43 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.ok(
+      warnings.some((line) => line.includes('Tab Optimize activity update failed: storage quota unavailable')),
+      'callback-based chrome.runtime.lastError storage failures should reject into the bounded event handler',
+    );
   } finally {
     console.warn = originalWarn;
   }
