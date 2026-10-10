@@ -70,11 +70,17 @@ async function wakeLastBatch() {
     elements.resultMessage.textContent = result.restored === 1
       ? '1 tab restored.'
       : `${result.restored} tabs restored.`;
+    if (result.failed > 0) {
+      elements.resultMessage.textContent += result.failed === 1
+        ? ' 1 tab could not be restored. Try Wake last batch again.'
+        : ` ${result.failed} tabs could not be restored. Try Wake last batch again.`;
+    }
     await refreshStatus();
   } catch (error) {
     elements.resultMessage.textContent = `Could not restore tabs: ${error.message}`;
+    elements.wakeButton.disabled = false;
   } finally {
-    setBusy(elements.wakeButton, false, 'Waking…', 'Wake last batch');
+    elements.wakeButton.textContent = 'Wake last batch';
   }
 }
 

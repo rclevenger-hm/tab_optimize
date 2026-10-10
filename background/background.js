@@ -170,7 +170,7 @@ async function optimizeTabs({ force = false } = {}) {
 
   state.totalSuspensions += suspendedIds.length;
   state.lastOptimizationAt = now;
-  state.lastBatch = suspendedIds;
+  if (suspendedIds.length > 0) state.lastBatch = suspendedIds;
   await saveState(state);
   await updateBadge();
 
@@ -186,16 +186,18 @@ async function wakeLastBatch() {
   const tabs = await queryTabs({});
   const discardedIds = new Set(tabs.filter((tab) => tab.discarded).map((tab) => tab.id));
   let restored = 0;
+  const failedIds = [];
 
   for (const tabId of state.lastBatch) {
     if (!discardedIds.has(tabId)) continue;
     if (await reloadTab(tabId)) restored += 1;
+    else failedIds.push(tabId);
   }
 
-  state.lastBatch = [];
+  state.lastBatch = failedIds;
   await saveState(state);
   await updateBadge();
-  return { restored };
+  return { restored, failed: failedIds.length };
 }
 
 async function getStatus() {
