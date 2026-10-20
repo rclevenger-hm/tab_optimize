@@ -43,6 +43,10 @@ The popup's **Suspend background tabs** button ignores the idle timer but still 
 
 **Wake last batch** reloads tabs from the most recent successful suspension batch that are still sleeping. If Chrome rejects a reload, the popup reports how many tabs failed and keeps those tabs available for another attempt, including after the service worker restarts. An optimization that suspends no tabs preserves the previous batch; a new nonempty batch replaces it. Tabs that already woke or were closed are skipped. Once the batch has been restored, the button is disabled until another batch is suspended.
 
+### Overlapping actions
+
+Automatic scans, manual suspension, and wake requests run in order rather than acting on the same tabs at once. Tab activity and removal events can still be saved while a discard or reload is pending, without rolling back newer activity, suspension counts, or wake-retry state. A failed storage operation reports an error without blocking later actions.
+
 ## Privacy
 
 Tab Optimize runs entirely inside the browser. It does not transmit browsing data. The only persisted data is:
