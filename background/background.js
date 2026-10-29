@@ -10,6 +10,28 @@ const SCAN_INTERVAL_MINUTES = 1;
 const SETTINGS_KEY = 'settings';
 const STATE_KEY = 'state';
 
+// Serialize storage transactions separately from slow Chrome tab operations so
+// activity events remain responsive without overwriting each other's state.
+let stateUpdates = Promise.resolve();
+let tabOperations = Promise.resolve();
+
+function updateState(update) {
+  const operation = stateUpdates.then(async () => {
+    const state = await getState();
+    await update(state);
+    await saveState(state);
+    return state;
+  });
+  stateUpdates = operation.catch(() => {});
+  return operation;
+}
+
+function runTabOperation(operation) {
+  const result = tabOperations.then(operation);
+  tabOperations = result.catch(() => {});
+  return result;
+}
+
 function storageGet(area, keys) {
   return new Promise((resolve, reject) => {
     chrome.storage[area].get(keys, (value) => {
@@ -109,38 +131,44 @@ async function ensureAlarm(settingsInput) {
 }
 
 async function initializeActivity(reset = false) {
-  const tabs = await queryTabs({});
-  const state = await getState();
-  const now = Date.now();
-  const currentIds = new Set(tabs.map((tab) => String(tab.id)));
+  return updateState(async (state) => {
+    const tabs = await queryTabs({});
+    const now = Date.now();
+    const currentIds = new Set(tabs.map((tab) => String(tab.id)));
 
-  for (const key of Object.keys(state.activityByTabId)) {
-    if (!currentIds.has(key)) delete state.activityByTabId[key];
-  }
-
-  for (const tab of tabs) {
-    const key = String(tab.id);
-    if (reset || !Number.isFinite(state.activityByTabId[key])) {
-      state.activityByTabId[key] = now;
+    for (const key of Object.keys(state.activityByTabId)) {
+      if (!currentIds.has(key)) delete state.activityByTabId[key];
     }
-  }
 
-  await saveState(state);
-  return state;
+    for (const tab of tabs) {
+      const key = String(tab.id);
+      if (reset || !Number.isFinite(state.activityByTabId[key])) {
+        state.activityByTabId[key] = now;
+      }
+    }
+  });
 }
 
 async function markTabActive(tabId, timestamp = Date.now()) {
   if (!Number.isInteger(tabId)) return;
-  const state = await getState();
-  state.activityByTabId[String(tabId)] = timestamp;
-  await saveState(state);
+  return updateState((state) => {
+    state.activityByTabId[String(tabId)] = timestamp;
+  });
 }
 
 async function removeTabState(tabId) {
-  const state = await getState();
-  delete state.activityByTabId[String(tabId)];
-  state.lastBatch = state.lastBatch.filter((id) => id !== tabId);
-  await saveState(state);
+  return updateState((state) => {
+    delete state.activityByTabId[String(tabId)];
+    state.lastBatch = state.lastBatch.filter((id) => id !== tabId);
+  });
+}
+
+async function replaceTabState(addedTabId, removedTabId, timestamp = Date.now()) {
+  return updateState((state) => {
+    delete state.activityByTabId[String(removedTabId)];
+    state.lastBatch = state.lastBatch.filter((id) => id !== removedTabId);
+    if (Number.isInteger(addedTabId)) state.activityByTabId[String(addedTabId)] = timestamp;
+  });
 }
 
 async function updateBadge() {
@@ -168,10 +196,15 @@ async function optimizeTabs({ force = false } = {}) {
     if (result.ok) suspendedIds.push(tab.id);
   }
 
-  state.totalSuspensions += suspendedIds.length;
-  state.lastOptimizationAt = now;
-  if (suspendedIds.length > 0) state.lastBatch = suspendedIds;
-  await saveState(state);
+  await updateState((current) => {
+    current.totalSuspensions += suspendedIds.length;
+    current.lastOptimizationAt = now;
+    if (suspendedIds.length > 0) {
+      current.lastBatch = suspendedIds.filter((id) =>
+        Object.prototype.hasOwnProperty.call(current.activityByTabId, String(id)),
+      );
+    }
+  });
   await updateBadge();
 
   return {
@@ -194,8 +227,9 @@ async function wakeLastBatch() {
     else failedIds.push(tabId);
   }
 
-  state.lastBatch = failedIds;
-  await saveState(state);
+  await updateState((current) => {
+    current.lastBatch = failedIds.filter((id) => current.lastBatch.includes(id));
+  });
   await updateBadge();
   return { restored, failed: failedIds.length };
 }
@@ -241,7 +275,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) runSafely('scheduled scan', optimizeTabs({ force: false }));
+  if (alarm.name === ALARM_NAME) runSafely('scheduled scan', runTabOperation(() => optimizeTabs({ force: false })));
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
@@ -259,10 +293,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
-  runSafely('tab replacement state update', (async () => {
-    await removeTabState(removedTabId);
-    await markTabActive(addedTabId);
-  })());
+  runSafely('tab replacement state update', replaceTabState(addedTabId, removedTabId));
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -282,9 +313,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       case 'GET_STATUS':
         return getStatus();
       case 'OPTIMIZE_NOW':
-        return optimizeTabs({ force: true });
+        return runTabOperation(() => optimizeTabs({ force: true }));
       case 'WAKE_LAST_BATCH':
-        return wakeLastBatch();
+        return runTabOperation(wakeLastBatch);
       case 'GET_SETTINGS':
         return { settings: await getSettings() };
       case 'SAVE_SETTINGS':
