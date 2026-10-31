@@ -45,6 +45,7 @@ test('browser startup preserves activity for surviving tabs', async () => {
     },
     tabs: {
       query(_query, callback) { callback(tabs.map((tab) => ({ ...tab }))); },
+      get(id, callback) { callback(tabs.find((tab) => tab.id === id)); },
       discard(_id, callback) { callback(null); },
       reload(_id, _options, callback) { callback(); },
       onActivated: activated.event,

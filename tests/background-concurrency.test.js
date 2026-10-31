@@ -10,7 +10,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function createWorker({ tabs = [], batch = [], enabled = false } = {}) {
+async function createWorker({ tabs = [], batch = [], enabled = false, settings = {} } = {}) {
   const events = {};
   const event = (name) => ({ addListener(listener) { events[name] = listener; } });
   const data = { state: {
@@ -20,6 +20,7 @@ async function createWorker({ tabs = [], batch = [], enabled = false } = {}) {
     lastBatch: batch,
   } };
   const openTabs = structuredClone(tabs);
+  const currentSettings = { enabled, ...settings };
   const discards = [];
   const reloads = [];
   const chrome = {
@@ -28,7 +29,7 @@ async function createWorker({ tabs = [], batch = [], enabled = false } = {}) {
       onInstalled: event('installed'), onStartup: event('startup'), onMessage: event('message'),
     },
     storage: {
-      sync: { get(_keys, callback) { callback({ settings: { enabled } }); } },
+      sync: { get(_keys, callback) { callback({ settings: structuredClone(currentSettings) }); } },
       local: {
         get(_keys, callback) { callback(structuredClone(data)); },
         set(value, callback) { Object.assign(data, structuredClone(value)); callback(); },
@@ -36,6 +37,7 @@ async function createWorker({ tabs = [], batch = [], enabled = false } = {}) {
     },
     tabs: {
       query(_query, callback) { callback(structuredClone(openTabs)); },
+      get(id, callback) { callback(structuredClone(openTabs.find((tab) => tab.id === id))); },
       discard(id, callback) {
         discards.push(id);
         const tab = openTabs.find((candidate) => candidate.id === id);
@@ -57,7 +59,7 @@ async function createWorker({ tabs = [], batch = [], enabled = false } = {}) {
   await import(`../background/background.js?concurrency=${++instance}`);
   await flushEvents();
   return {
-    data, openTabs, events, chrome, discards, reloads,
+    data, openTabs, events, chrome, discards, reloads, currentSettings,
     send(action) { return new Promise((resolve) => events.message({ action }, {}, resolve)); },
   };
 }
@@ -255,3 +257,96 @@ test('tab replacement is atomic with a subsequent removal of the new tab', async
   assert.deepEqual(worker.data.state.lastBatch, []);
   assert.equal(worker.data.state.totalSuspensions, 7);
 });
+
+async function pauseFirstDiscard(worker, action = 'OPTIMIZE_NOW') {
+  const entered = deferred();
+  let finish;
+  const discard = worker.chrome.tabs.discard;
+  worker.chrome.tabs.discard = (id, callback) => {
+    if (id !== 1) return discard(id, callback);
+    finish = () => discard(id, callback);
+    entered.resolve();
+  };
+  const result = action === 'alarm'
+    ? (worker.events.alarm({ name: 'tab-optimize-scan' }), null)
+    : worker.send(action);
+  await entered.promise;
+  return { result, finish };
+}
+
+for (const [name, change] of Object.entries({
+  active: (worker) => { worker.openTabs[1].active = true; },
+  pinned: (worker) => { worker.openTabs[1].pinned = true; },
+  audible: (worker) => { worker.openTabs[1].audible = true; },
+  discarded: (worker) => { worker.openTabs[1].discarded = true; },
+  navigated: (worker) => { worker.openTabs[1].url = 'chrome://settings'; },
+  excluded: (worker) => { worker.currentSettings.excludedDomains = ['example.com']; },
+  closed: (worker) => { worker.openTabs.splice(1, 1); worker.events.removed(2); },
+})) {
+  test(`pending optimization skips a later tab that became ${name}`, async () => {
+    const worker = await createWorker({ tabs: [awake(1), awake(2)] });
+    const pending = await pauseFirstDiscard(worker);
+    change(worker);
+    await flushEvents();
+    pending.finish();
+    assert.equal((await pending.result).suspended, 1);
+    assert.deepEqual(worker.discards, [1]);
+    assert.equal(worker.data.state.totalSuspensions, 8);
+    assert.deepEqual(worker.data.state.lastBatch, [1]);
+  });
+}
+
+test('scheduled scan rechecks activity before each discard', async () => {
+  const worker = await createWorker({ tabs: [awake(1), awake(2)], enabled: true });
+  const pending = await pauseFirstDiscard(worker, 'alarm');
+  worker.events.activated({ tabId: 2 });
+  await flushEvents();
+  pending.finish();
+  await flushEvents();
+  assert.deepEqual(worker.discards, [1]);
+});
+
+test('disabling automatic mode during a scan stops remaining discards', async () => {
+  const worker = await createWorker({ tabs: [awake(1), awake(2)], enabled: true });
+  const pending = await pauseFirstDiscard(worker, 'alarm');
+  worker.currentSettings.enabled = false;
+  pending.finish();
+  await flushEvents();
+  assert.deepEqual(worker.discards, [1]);
+});
+
+test('tab lookup failure skips that candidate and continues safely', async () => {
+  const worker = await createWorker({ tabs: [awake(1), awake(2)] });
+  const get = worker.chrome.tabs.get;
+  worker.chrome.tabs.get = (id, callback) => {
+    if (id !== 1) return get(id, callback);
+    worker.chrome.runtime.lastError = { message: 'No tab with id: 1' };
+    callback();
+    worker.chrome.runtime.lastError = null;
+  };
+  assert.equal((await worker.send('OPTIMIZE_NOW')).suspended, 1);
+  assert.deepEqual(worker.discards, [2]);
+});
+
+for (const area of ['sync', 'local']) {
+  test(`a mid-batch ${area} read failure preserves completed discard recovery`, async () => {
+    const worker = await createWorker({ tabs: [awake(1), awake(2)] });
+    const pending = await pauseFirstDiscard(worker);
+    const get = worker.chrome.storage[area].get;
+    let fail = true;
+    worker.chrome.storage[area].get = (keys, callback) => {
+      if (!fail) return get(keys, callback);
+      fail = false;
+      worker.chrome.runtime.lastError = { message: 'Storage unavailable' };
+      callback({});
+      worker.chrome.runtime.lastError = null;
+    };
+    pending.finish();
+    assert.deepEqual(await pending.result, { error: 'Storage unavailable' });
+    assert.deepEqual(worker.discards, [1], 'uncertain eligibility must stop the batch');
+    assert.equal(worker.data.state.totalSuspensions, 8);
+    assert.deepEqual(worker.data.state.lastBatch, [1]);
+    assert.deepEqual(await worker.send('WAKE_LAST_BATCH'), { restored: 1, failed: 0 });
+    assert.deepEqual(worker.reloads, [1]);
+  });
+}
