@@ -31,6 +31,7 @@ async function createWorker({ batch = [1, 2], tabs, failures = [], discardFailur
     },
     tabs: {
       query(_query, callback) { callback(structuredClone(openTabs)); },
+      get(id, callback) { callback(structuredClone(openTabs.find((tab) => tab.id === id))); },
       discard(id, callback) {
         if (discardFailIds.has(id)) {
           chrome.runtime.lastError = { message: 'Temporary discard failure' };

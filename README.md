@@ -45,7 +45,7 @@ The popup's **Suspend background tabs** button ignores the idle timer but still 
 
 ### Overlapping actions
 
-Automatic scans, manual suspension, and wake requests run in order rather than acting on the same tabs at once. Tab activity and removal events can still be saved while a discard or reload is pending, without rolling back newer activity, suspension counts, or wake-retry state. A failed storage operation reports an error without blocking later actions.
+Automatic scans, manual suspension, and wake requests run in order rather than acting on the same tabs at once. Tab activity and removal events can still be saved while a discard or reload is pending, without rolling back newer activity, suspension counts, or wake-retry state. A failed storage operation reports an error without blocking later actions. Before each discard, the worker rechecks the tab, settings, and recorded activity so a slow batch skips tabs that have since become protected or recently used. Turning off automatic mode stops the remaining automatic batch; manual optimization still ignores the idle timer.
 
 ## Privacy
 
