@@ -1,6 +1,7 @@
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
+  isTabEligibleForDiscard,
   selectTabsForDiscard,
   summarizeTabs,
 } from '../shared/core.js';
@@ -58,6 +59,18 @@ function storageSet(area, value) {
 
 function queryTabs(query = {}) {
   return new Promise((resolve) => chrome.tabs.query(query, resolve));
+}
+
+function getTab(tabId) {
+  return new Promise((resolve) => {
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError) {
+        resolve(null);
+        return;
+      }
+      resolve(tab);
+    });
+  });
 }
 
 function discardTab(tabId) {
@@ -191,9 +204,27 @@ async function optimizeTabs({ force = false } = {}) {
   const candidates = selectTabsForDiscard(tabs, settings, state.activityByTabId, now, force);
   const suspendedIds = [];
 
-  for (const tab of candidates) {
-    const result = await discardTab(tab.id);
-    if (result.ok) suspendedIds.push(tab.id);
+  let scanError;
+  try {
+    for (const tab of candidates) {
+      // Earlier discards can take long enough for activity, settings, or tab
+      // protections to change. Never act solely on the initial scan snapshot.
+      const currentSettings = await getSettings();
+      if (!force && !currentSettings.enabled) break;
+      await stateUpdates;
+      const currentState = await getState();
+      const currentTab = await getTab(tab.id);
+      if (!isTabEligibleForDiscard(
+        currentTab, currentSettings, currentState.activityByTabId[String(tab.id)], Date.now(), force,
+      )) continue;
+      const result = await discardTab(tab.id);
+      if (result.ok) suspendedIds.push(tab.id);
+    }
+
+  } catch (error) {
+    // Preserve recovery/accounting for completed discards even if a later
+    // settings or activity lookup fails. Do not continue with stale data.
+    scanError = error;
   }
 
   await updateState((current) => {
@@ -206,6 +237,7 @@ async function optimizeTabs({ force = false } = {}) {
     }
   });
   await updateBadge();
+  if (scanError) throw scanError;
 
   return {
     suspended: suspendedIds.length,
