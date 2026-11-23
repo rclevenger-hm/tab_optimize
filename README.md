@@ -41,7 +41,7 @@ The popup's **Suspend background tabs** button ignores the idle timer but still 
 
 ### Wake last batch
 
-**Wake last batch** reloads tabs from the most recent successful suspension batch that are still sleeping. If Chrome rejects a reload, the popup reports how many tabs failed and keeps those tabs available for another attempt, including after the service worker restarts. An optimization that suspends no tabs preserves the previous batch; a new nonempty batch replaces it. Tabs that already woke or were closed are skipped. Once the batch has been restored, the button is disabled until another batch is suspended.
+**Wake last batch** reloads tabs from the most recent successful suspension batch that are still sleeping. If Chrome cannot confirm a tab’s current state or rejects a reload, the popup reports how many tabs failed and keeps those tabs available for another attempt, including after the service worker restarts. An optimization that suspends no tabs preserves the previous batch; a new nonempty batch replaces it. Tabs that already woke are skipped even if they woke during a prior reload. Closed tabs are removed from the batch. Once the batch has been restored, the button is disabled until another batch is suspended.
 
 ### Overlapping actions
 
