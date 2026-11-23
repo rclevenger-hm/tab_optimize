@@ -255,6 +255,14 @@ async function wakeLastBatch() {
 
   for (const tabId of state.lastBatch) {
     if (!discardedIds.has(tabId)) continue;
+    // A previous reload may have taken long enough for this tab to wake.
+    // Never reload an already-awake page, or guess after a failed read.
+    const currentTab = await getTab(tabId);
+    if (!currentTab) {
+      failedIds.push(tabId);
+      continue;
+    }
+    if (!currentTab.discarded) continue;
     if (await reloadTab(tabId)) restored += 1;
     else failedIds.push(tabId);
   }

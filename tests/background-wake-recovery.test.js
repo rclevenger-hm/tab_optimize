@@ -146,3 +146,44 @@ test('failed discards preserve the previous batch but successful discards replac
   assert.deepEqual(await worker.send('OPTIMIZE_NOW'), { suspended: 1, considered: 1, skipped: false });
   assert.deepEqual(worker.data.state.lastBatch, [2]);
 });
+
+test('wake skips a later tab awakened while the prior reload was pending', async () => {
+  const worker = await createWorker();
+  const reload = worker.chrome.tabs.reload;
+  worker.chrome.tabs.reload = (id, options, callback) => {
+    if (id === 1) {
+      queueMicrotask(() => {
+        worker.openTabs.find((tab) => tab.id === 2).discarded = false;
+        reload(id, options, callback);
+      });
+      return;
+    }
+    reload(id, options, callback);
+  };
+
+  assert.deepEqual(await worker.send('WAKE_LAST_BATCH'), { restored: 1, failed: 0 });
+  assert.deepEqual(worker.reloads, [1]);
+  assert.deepEqual(worker.data.state.lastBatch, []);
+});
+
+test('wake retains a discarded tab whose fresh state cannot be read', async () => {
+  const worker = await createWorker();
+  const get = worker.chrome.tabs.get;
+  worker.chrome.tabs.get = (id, callback) => {
+    if (id === 2) {
+      worker.chrome.runtime.lastError = { message: 'Temporary tab read failure' };
+      callback();
+      worker.chrome.runtime.lastError = null;
+      return;
+    }
+    get(id, callback);
+  };
+
+  assert.deepEqual(await worker.send('WAKE_LAST_BATCH'), { restored: 1, failed: 1 });
+  assert.deepEqual(worker.reloads, [1]);
+  assert.deepEqual(worker.data.state.lastBatch, [2]);
+
+  worker.chrome.tabs.get = get;
+  assert.deepEqual(await worker.send('WAKE_LAST_BATCH'), { restored: 1, failed: 0 });
+  assert.deepEqual(worker.reloads, [1, 2]);
+});
